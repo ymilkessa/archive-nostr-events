@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -15,16 +16,21 @@ func main() {
 		return
 	}
 
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+
 	for _, url := range nip05info.Relays {
+		fmt.Println("Connecting to relay:", url)
 
 		conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+		defer conn.Close()
+
 		if err != nil {
 			fmt.Println("Error connecting to WebSocket:", err)
 			return
 		}
-		defer conn.Close()
 
-		const reqId string = "events_for_" + nip05
+		reqId := "events_for_" + nip05
 		req := []interface{}{
 			"REQ",
 			reqId,
@@ -37,62 +43,59 @@ func main() {
 			fmt.Println("Error sending request:", err)
 			return
 		}
+
 		for {
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				fmt.Println("Error reading message:", err)
-				return
-			}
-
-			var msg []interface{}
-			if err := json.Unmarshal(message, &msg); err != nil {
-				fmt.Println("Error decoding message:", err)
-				continue
-			}
-
-			if len(msg) < 2 {
-				continue
-			}
-
-			if msg[0] == "EOSE" && msg[1] == reqId {
-				fmt.Println("Received EOSE")
+			exitReached := false
+			select {
+			case <-timer.C:
+				fmt.Println("10 seconds passed without events, moving to next relay")
+				exitReached = true
 				break
-			}
+			default:
+				_, message, err := conn.ReadMessage()
+				if err != nil {
+					fmt.Println("Error reading message:", err)
+					return
+				}
 
-			if msg[0] == "EVENT" && len(msg) == 3 {
+				var msg []interface{}
+				if err := json.Unmarshal(message, &msg); err != nil {
+					fmt.Println("Error decoding message:", err)
+					continue
+				}
 
-				if m, ok := msg[2].(map[string]interface{}); ok {
-					event := NostrEvent{}
-					event.Pubkey = m[EFPubkey].(string)
-					event.Kind = int(m[EFKind].(float64))
-					event.Id = m[EFId].(string)
-					event.Content = m[EFContent].(string)
-					event.CreatedAt = int64(m[EFCreatedAt].(float64))
-					event.Sig = m[EFSig].(string)
-					event.Tags = [][]string{}
+				if len(msg) < 2 {
+					continue
+				}
 
-					tagsInterface, ok := m[EFTags].([]interface{})
-					if !ok {
-						fmt.Println("Error decoding tags")
+				if msg[0] == "EOSE" && msg[1] == reqId {
+					fmt.Println("Received EOSE")
+					exitReached = true
+					break
+				}
+
+				if msg[0] == "EVENT" && len(msg) == 3 {
+					eventData, err := json.Marshal(msg[2])
+					if err != nil {
+						fmt.Println("Error decoding event:", err)
 						continue
-					} else {
-						for _, tagInterface := range tagsInterface {
-							tag, ok := tagInterface.([]interface{})
-							if !ok {
-								fmt.Println("Error decoding tag")
-								continue
-							} else {
-								tagStr := []string{}
-								for _, tagElem := range tag {
-									tagStr = append(tagStr, tagElem.(string))
-								}
-								event.Tags = append(event.Tags, tagStr)
-							}
-						}
 					}
 
-					SaveEventToArchive(event)
+					nostrEvent := NostrEvent{}
+					if err := json.Unmarshal(eventData, &nostrEvent); err != nil {
+						fmt.Println("Error decoding event:", err)
+						continue
+					}
+					SaveEventToArchive(nostrEvent)
 				}
+				if !timer.Stop() {
+					<-timer.C
+				}
+				fmt.Println("Resetting timer")
+				timer.Reset(10 * time.Second)
+			}
+			if exitReached {
+				break
 			}
 		}
 		conn.Close()

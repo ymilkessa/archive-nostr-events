@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+type Nip05Response struct {
+	Names  map[string]string   `json:"names"`
+	Relays map[string][]string `json:"relays"`
+}
+
 type Nip05Info struct {
 	Pubkey string
 	Relays []string
@@ -41,13 +46,14 @@ func GetPubkeyAndRelays(nip05 string) (*Nip05Info, error) {
 	if err != nil {
 		return nil, err
 	}
-	var data map[string]interface{}
+	var data Nip05Response
 	err = json.Unmarshal(body, &data)
 	if err != nil {
+		fmt.Println("Error decoding JSON:", err)
 		return nil, err
 	}
-	pubkey := data[nip05NamesField].(map[string]interface{})[local_part].(string)
-	relays := data[nip05RelaysField].(map[string]interface{})[pubkey].([]string)
+	pubkey := data.Names[local_part]
+	relays := data.Relays[pubkey]
 	nip05_info := Nip05Info{pubkey, relays}
 	return &nip05_info, nil
 }

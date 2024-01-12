@@ -10,4 +10,4 @@ const (
 	EFSig       string = "sig"
 )
 
-const ArchivesFolder = "archive"
+const ArchivesFolder = "archives"

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 )
 
@@ -32,24 +33,27 @@ func convertEventToJsonString(event NostrEvent) string {
 // as the executable. The file is saved in a subfolder named after the event kind. And the
 // file name is the event id with a ".json" extension.
 func SaveEventToArchive(event NostrEvent) {
-	thisFileDir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		fmt.Println("Error getting absolute path of this file:", err)
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		fmt.Println("Error getting current file path.")
 		return
 	}
-	desiredFilePath := filepath.Join(thisFileDir, ArchivesFolder, event.Pubkey, strconv.Itoa(event.Kind), event.Id+".json")
-	if _, err := os.Stat(desiredFilePath); err == nil {
+	thisFileDir := filepath.Dir(filename)
+
+	jsonFilePath := filepath.Join(thisFileDir, ArchivesFolder, event.Pubkey, strconv.Itoa(event.Kind), event.Id+".json")
+	if _, err := os.Stat(jsonFilePath); err == nil {
 		// This means the file already exists.
+		fmt.Println("File already exists:", jsonFilePath)
 		return
 	}
 	// Create all the directories if they don't exist.
-	err = os.MkdirAll(filepath.Dir(desiredFilePath), os.ModePerm)
+	err := os.MkdirAll(filepath.Dir(jsonFilePath), os.ModePerm)
 	if err != nil {
 		fmt.Println("Error creating directories:", err)
 		return
 	}
 
-	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0644)
+	file, err := os.OpenFile(jsonFilePath, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
 		return
