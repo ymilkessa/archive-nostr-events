@@ -95,6 +95,7 @@ func main() {
 				timer.Reset(10 * time.Second)
 			}
 			if exitReached {
+				// TODO: Exit after timeout doesn't seem to be working. Needs a fix.
 				break
 			}
 		}
